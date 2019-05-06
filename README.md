@@ -1,4 +1,4 @@
-# scdhorizon
+# scdalma
 
 Alma integration for the SCD Drupal Website
 
