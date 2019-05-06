@@ -1,0 +1,6 @@
+name = SCD Alma
+description = "Alma integration for the SCD"
+dependencies[] = simple_mail
+dependencies[] = tcpdf
+package = SCD
+core = 7.x

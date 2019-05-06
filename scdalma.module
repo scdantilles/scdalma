@@ -1,0 +1,354 @@
+<?php
+
+/* api users : l8xx4ba037ce904844849a28261cd67b3be3 */
+/* https://api-eu.hosted.exlibrisgroup.com */
+/* exemple : https://gateway-hostname/almaws/version/resource-name/parameters?additional_parameter=value&apikey=l8xx4ba037ce904844849a28261cd67b3be3 */
+
+function scdalma_help($path, $arg) {
+  switch ($path) {
+    case "admin/help#scdalma":
+      return '<p>' . t("SCD Integration with Alma.") . '</p>';
+      break;
+  }
+} 
+
+function scdalma_menu() {
+  $items['currentdocs'] = array(
+        'title' => t('Documents en cours'),
+        'page callback' => 'scdalma_currentdocs',
+        'access callback' => TRUE,
+        'type' => MENU_NORMAL_ITEM,
+  );  
+
+  $items['quitus'] = array(
+        'title' => t('Demander un quitus'),
+        'page callback' => 'scdalma_quitus',
+        'access callback' => TRUE,
+        'type' => MENU_NORMAL_ITEM,
+  );  
+
+  $items['quitus/download'] = array(
+        'title' => t('Télécharger un quitus'),
+        'page callback' => 'scdalma_quitus_download',
+        'access callback' => 'scdalma_quitus_access',
+        'type' => MENU_NORMAL_ITEM,
+  );  
+
+  return $items;
+}
+
+function scdalma_quitus_access() {
+  global $user;
+  $userfields = user_load($user->uid);
+
+  /* to do 
+  /almaws/v1/users/{user_id} Get user details
+  récupérer l'user
+  /almaws/v1/users/{user_id}/loans Retrieve user loans
+  vérifier s'il y a des prêts en cours
+  /almaws/v1/users/{user_id}/fees Get user fines/fees
+  vérifier s'il y a des bloquages ?
+  
+  return true ou false selon conditions
+  
+  */
+  
+  return true;
+}
+
+/* PDF Header including two images */
+function quitus_header(&$tcpdf) {
+  $tcpdf->SetY(25);
+  $tcpdf->Image(dirname(__FILE__).'/images/buag.jpg', null, null, 25, null, 'JPG', '', '', true, 150, '', false, false, 0, false, false, false);
+  $tcpdf->Image(dirname(__FILE__).'/images/logo_ua.jpg', null, null, 25, null, 'JPG', '', 'T', false, 150, 'R', false, false, 0, 'false', false, false);
+}
+
+/* Generates the Quitus PDF and send it over http */
+function scdalma_quitus_download() {
+  global $user;
+  $userfields = user_load($user->uid);
+
+  if (!array_key_exists('und', $userfields->field_horizon_uid))
+    return false;
+
+  $bn = $userfields->field_horizon_uid['und'][0]['value'];
+  
+    //on récupère les infos de l'user dans alma
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+  $xmluser=simplexml_load_file($info_user);
+  
+  //si pas d'erreur dans le xml / utilisateur trouvé
+  if($xmluser){
+
+    $oldLocale = setlocale(LC_TIME, '0');
+    setlocale(LC_TIME, 'fr_FR.UTF8', 'fr.UTF8', 'fr_FR.UTF-8', 'fr.UTF-8');
+
+    $tcpdf = tcpdf_get_instance();
+
+    $tcpdf->DrupalInitialize(array(
+      'footer' => array(
+        'html' => 'This is the <em>footer</em>',
+      ),
+      'header' => array(
+        'callback' => 'quitus_header',
+      ),
+    ));
+
+    $tcpdf->setPrintFooter(false);
+    $tcpdf->SetFont('helvetica', '', 11, '', true);
+    $tcpdf->SetMargins(PDF_MARGIN_LEFT*2.5, PDF_MARGIN_TOP, PDF_MARGIN_RIGHT*2.5);
+    $tcpdf->SetHeaderMargin(PDF_MARGIN_HEADER*2);
+    $tcpdf->setJPEGQuality(75);
+
+    $tcpdf->SetY(100);
+
+    $tcpdf->writeHTML("
+      <p>Objet: QUITUS</p>
+      <br>
+      <p>Le Directeur du Service commun de la documentation de l’Université des Antilles certifie que ".$user->name." est quitte de toute obligation envers les bibliothèques universitaires de l’Université des Antilles et que le dernier ouvrage emprunté a été rendu.</p>
+      <p>Pointe-à-Pitre, le ".strftime("%e %B %Y" ,time())."</p>
+      <p>Sylvain HOUDEBERT,<br>Directeur du SCDU Antilles</p>
+      <br>
+      <br>
+    ");
+
+    $tcpdf->Image(dirname(__FILE__).'/images/sign.jpg', null, null, 50, null, 'JPG', '', 'T', false, 150, 'R', false, false, 0, false, false, false);
+
+    $pdf = $tcpdf->Output('', 'S');
+
+    if (!$pdf) {
+      return t('An error occured.');
+    }
+
+    /* Write the quitus issue to the database of Horizon */
+     
+    //on met à jour le status de l'user dans alma
+    $xmluser->status="INACTIVE";
+    //on change la date d'expiration
+    $xmluser->expiry_date=date('Y-m-d')."Z";
+    
+    $url = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?user_id_type=all_unique&send_pin_number_letter=false&apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+
+    $data = $xmluser->asXML();
+
+    $headers[] = 'accept: application/xml';
+    $headers[] = 'Content-Type: application/xml';
+
+    $ch = curl_init($url);
+
+    //That two line is very important for PUT!
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+    $content = curl_exec($ch);
+    $info = curl_getinfo($ch);
+
+    curl_close($ch);
+
+    /* HTTP headers */
+    header('Content-Type: application/pdf');
+    header('Content-Length: ' . strlen($pdf));
+    header('Content-Disposition: attachment; filename="quitus.pdf"');
+    print $pdf;
+
+    setlocale(LC_TIME, $oldLocale);
+
+    return NULL;
+  }
+}
+
+/* Check if the user have enough permissions to get a quitus, with feedback */
+function scdalma_quitus() {
+
+  $candeliver = true;
+  global $user;
+  $userfields = user_load($user->uid);
+
+  $out = "<h2>Vérifications:</h2>";
+
+  /* Check if the user is logged in */
+  if (!user_is_logged_in()) {
+    $url = urlencode("http://" . $_SERVER['SERVER_NAME'] . "/cas?destination=quitus");
+    drupal_goto('https://auth.martinique.univ-ag.fr/cas/login?service=' . $url);
+  }
+      
+  //on récupère les infos de l'user dans alma
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+  $xmluser=simplexml_load_file($info_user);
+  
+  //si pas d'erreur dans le xml / utilisateur trouvé
+  if($xmluser){
+
+    //on récupère les prets
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+    
+    $xmlloans = simplexml_load_file($loans);
+    
+    //si pas d'erreur dans le xml
+    if($xmlloans){
+        
+      //on récupere le nombre de prets
+      $doc = $xmlloans['total_record_count'];  
+      
+      if ($doc == 0){
+        $out .= "<p class=\"text-success\"><span class=\"glyphicon glyphicon-ok\" aria-hidden=\"true\"></span> Aucun document en prêt.</p>";
+      }
+      else{
+        
+        $out .= "<p class=\"text-danger\"><span class=\"glyphicon glyphicon-remove\" aria-hidden=\"true\"></span> Vous avez des prêts en cours.</p>";
+        $out .= "<table class=\"table table-striped\">";
+        $out .= "<tr><th>Titre</th><th>Bibliothèque</th><th>Prêt le</th><th>Retour le</th></tr>";
+      
+        foreach($xmlloans->children() as $books) {
+          
+          //on passe les dates au bon format d'affichage
+          $loandate = new DateTime($books->loan_date);
+          $duedate = new DateTime($books->due_date);
+          
+          $out .= "<tr>
+                   <td>".$books->title."</td>
+                   <td>".$books->library['desc']."</td>
+                   <td>".$loandate->format('d-m-Y')."</td>
+                   <td>".$duedate->format('d-m-Y')."</td>
+                 </tr>";
+        }
+        $out .= "</table>"; 
+        $candeliver = false;
+      }
+    }
+    
+    //on vérifie les bloquages
+    $nbblock = 0;
+    $outb = "<p class=\"text-danger\"><span class=\"glyphicon glyphicon-remove\" aria-hidden=\"true\"></span> Votre compte fait l'objet d'un ou plusieurs blocages.</p>";
+    $outb .= "<table class=\"table table-striped\">";
+    $outb .= "<tr><th>Type</th><th>Description</th><th>Date de début</th><th>Date de fin</th></tr>";
+    //bloquages
+    foreach($xmluser->user_blocks->user_block as $block) {
+      //on compte le nombre de doc
+      $nbblock++;
+      //on passe les dates au bon format d'affichage
+      $created_date = new DateTime($block->created_date);
+      $expiry_date = new DateTime($block->expiry_date);
+      
+      $outb .= "<tr>
+               <td>".$block->block_type."</td>
+               <td>".$block->block_description['desc']."</td>
+               <td>".$created_date->format('d-m-Y')."</td>
+               <td>".$expiry_date->format('d-m-Y')."</td>
+             </tr>";
+    }
+    $outb .= "</table>"; 
+    if($nbblock)
+      $candeliver = false;
+    else
+      $out .= "<p class=\"text-success\"><span class=\"glyphicon glyphicon-ok\" aria-hidden=\"true\"></span> Aucun blocage.</p>";
+
+  }
+    else return "<p class=\"text-danger\"><span class=\"glyphicon glyphicon-remove\" aria-hidden=\"true\"></span> Votre inscription à la BU n'a pas été trouvée.</p>"; 
+  
+  /* Output the quitus download link or a contact form */
+  if ($candeliver) {
+    $out .= "<p><a href=\"/quitus/download\" type=\"button\" class=\"btn btn-primary\">Cloturer votre compte et obtenir le quitus</a></p>";
+  }
+  else
+  {
+    $out = $out.$outb;
+    $out .= "<p>Nous ne pouvons pas cloturer votre compte en l'état. Merci de prendre contact avec votre bibliothèque :</p>";
+    $render_contact_form = drupal_get_form('scdalma_contact_form');
+    $out .= drupal_render($render_contact_form);
+  }
+
+  return $out;
+}
+
+/* A basic contact form */
+function scdalma_contact_form($form_state) {
+  $form['message'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Message'),
+    '#required' => TRUE,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Envoyer',
+  );
+
+  return $form;
+}
+
+function scdalma_contact_form_submit($form, &$form_state) {
+  $message = $form_state['values']['message'];
+  if (simple_mail_send('no-reply@angole.univ-ag.fr', 'quitus@univ-ag.fr', 'Problème d\'obtention de quitus', $message)) {
+    drupal_set_message("Message envoyé.", 'status');
+  } else {
+    drupal_set_message("Problème lors de l'envoi du message.", 'status');
+  }
+}
+
+
+/* Display the current documents of the user */
+function scdalma_currentdocs() {
+
+  global $user;
+  $userfields = user_load($user->uid);
+
+  if (!user_is_logged_in())
+  {
+    $url = urlencode("http://" . $_SERVER['SERVER_NAME'] . "/cas?destination=currentdocs");
+    drupal_goto('https://auth.martinique.univ-ag.fr/cas/login?service=' . $url);
+  }
+
+  //on récupère les infos de l'user dans alma
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+  $xml=simplexml_load_file($info_user);
+  
+  //si pas d'erreur dans le xml / utilisateur trouvé
+  if($xml){
+
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+        
+    $xml=simplexml_load_file($loans);
+    
+    //si pas d'erreur dans le xml
+    if($xml){
+      
+      //on récupere le nombre de prets
+      $doc = $xml['total_record_count'];
+      
+      //on a des documents
+      if($doc > 0){
+        
+        $out = "<table class=\"table table-striped\">";
+        $out .= "<tr><th>Titre</th><th>Bibliothèque</th><th>Prêt le</th><th>Retour le</th></tr>";
+      
+        foreach($xml->children() as $books) {
+          //on compte le nombre de doc
+          $doc++;
+          //on passe les dates au bon format d'affichage
+          $loandate = new DateTime($books->loan_date);
+          $duedate = new DateTime($books->due_date);
+          
+          $out .= "<tr>
+                   <td>".$books->title."</td>
+                   <td>".$books->library['desc']."</td>
+                   <td>".$loandate->format('d-m-Y')."</td>
+                   <td>".$duedate->format('d-m-Y')."</td>
+                 </tr>";
+        }
+        $out .= "</table>"; 
+        return $out;
+      }
+      else
+        return "<p>Aucun prêt en cours</p>";
+    }
+  }
+    else return "<p>Votre inscription à la BU n'a pas été trouvée.</p>"; 
+}
+
+?>
