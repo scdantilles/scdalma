@@ -1,8 +1,8 @@
 <?php
 
-/* api users : l8xx4ba037ce904844849a28261cd67b3be3 */
+/* api users :  */
 /* https://api-eu.hosted.exlibrisgroup.com */
-/* exemple : https://gateway-hostname/almaws/version/resource-name/parameters?additional_parameter=value&apikey=l8xx4ba037ce904844849a28261cd67b3be3 */
+/* exemple : https://gateway-hostname/almaws/version/resource-name/parameters?additional_parameter=value&apikey= */
 
 function scdalma_help($path, $arg) {
   switch ($path) {
@@ -74,7 +74,7 @@ function scdalma_quitus_download() {
   $bn = $userfields->field_horizon_uid['und'][0]['value'];
   
     //on récupère les infos de l'user dans alma
-  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
   $xmluser=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
@@ -127,7 +127,7 @@ function scdalma_quitus_download() {
     //on change la date d'expiration
     $xmluser->expiry_date=date('Y-m-d')."Z";
     
-    $url = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?user_id_type=all_unique&send_pin_number_letter=false&apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+    $url = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?user_id_type=all_unique&send_pin_number_letter=false&apikey=";
 
     $data = $xmluser->asXML();
 
@@ -178,14 +178,14 @@ function scdalma_quitus() {
   }
       
   //on récupère les infos de l'user dans alma
-  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
   $xmluser=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xmluser){
 
     //on récupère les prets
-    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
     
     $xmlloans = simplexml_load_file($loans);
     
@@ -305,13 +305,13 @@ function scdalma_currentdocs() {
   }
 
   //on récupère les infos de l'user dans alma
-  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
   $xml=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xml){
 
-    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=l8xx4ba037ce904844849a28261cd67b3be3";
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
         
     $xml=simplexml_load_file($loans);
     
