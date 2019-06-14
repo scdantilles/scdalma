@@ -41,19 +41,53 @@ function scdalma_quitus_access() {
   global $user;
   $userfields = user_load($user->uid);
 
-  /* to do 
-  /almaws/v1/users/{user_id} Get user details
-  récupérer l'user
-  /almaws/v1/users/{user_id}/loans Retrieve user loans
-  vérifier s'il y a des prêts en cours
-  /almaws/v1/users/{user_id}/fees Get user fines/fees
-  vérifier s'il y a des bloquages ?
+  $candeliver = true;
+  global $user;
+  $userfields = user_load($user->uid);
+
+      
+  //on récupère les infos de l'user dans alma
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
+  @$xmluser=simplexml_load_file($info_user);
   
-  return true ou false selon conditions
+  //si pas d'erreur dans le xml / utilisateur trouvé
+  if($xmluser){
+
+    //on récupère les prets
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
+    
+    @$xmlloans = simplexml_load_file($loans);
+    
+    //si pas d'erreur dans le xml
+    if($xmlloans){
+        
+      //on récupere le nombre de prets
+      $doc = $xmlloans['total_record_count'];  
+      
+      if ($doc != 0){
+        $candeliver = false;
+      }
+    }
+    
+    //on vérifie les bloquages
+    $nbblock = 0;
   
-  */
+    //bloquages
+    foreach($xmluser->user_blocks->user_block as $block) {
+      //on compte le nombre de doc
+      $nbblock++;
+    }
+    
+    if($nbblock)
+      $candeliver = false;
   
-  return true;
+    return $candeliver;
+  }
+  else
+     $candeliver = false;
+   
+  return $candeliver;
+  
 }
 
 /* PDF Header including two images */
@@ -67,18 +101,27 @@ function quitus_header(&$tcpdf) {
 function scdalma_quitus_download() {
   global $user;
   $userfields = user_load($user->uid);
+  
+  $prenom = $userfields->field_prenom['und'][0]['value'];
+  $nom = $userfields->field_nom['und'][0]['value'];
 
   if (!array_key_exists('und', $userfields->field_horizon_uid))
     return false;
 
-  $bn = $userfields->field_horizon_uid['und'][0]['value'];
+  //$bn = $userfields->field_horizon_uid['und'][0]['value'];
   
     //on récupère les infos de l'user dans alma
   $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
-  $xmluser=simplexml_load_file($info_user);
+  @$xmluser=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xmluser){
+    
+    foreach($xmluser->user_identifiers->user_identifier as $identifier) {
+      if($identifier->id_type['desc'] == 'INE'){
+          $INE = $identifier->value;
+      }  
+    }
 
     $oldLocale = setlocale(LC_TIME, '0');
     setlocale(LC_TIME, 'fr_FR.UTF8', 'fr.UTF8', 'fr_FR.UTF-8', 'fr.UTF-8');
@@ -105,7 +148,7 @@ function scdalma_quitus_download() {
     $tcpdf->writeHTML("
       <p>Objet: QUITUS</p>
       <br>
-      <p>Le Directeur du Service commun de la documentation de l’Université des Antilles certifie que ".$user->name." est quitte de toute obligation envers les bibliothèques universitaires de l’Université des Antilles et que le dernier ouvrage emprunté a été rendu.</p>
+      <p>Le Directeur du Service commun de la documentation de l’Université des Antilles certifie que <br />".$prenom." ".$nom."<br />INE : ".$INE."<br /> est quitte de toute obligation envers les bibliothèques universitaires de l’Université des Antilles et que le dernier ouvrage emprunté a été rendu.</p>
       <p>Pointe-à-Pitre, le ".strftime("%e %B %Y" ,time())."</p>
       <p>Sylvain HOUDEBERT,<br>Directeur du SCDU Antilles</p>
       <br>
@@ -147,19 +190,34 @@ function scdalma_quitus_download() {
 
     $content = curl_exec($ch);
     $info = curl_getinfo($ch);
+    
+    // Vérification du code d'état HTTP
+    if (!curl_errno($ch)) {
+      switch ($http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE)) {
+        case 200:  # OK
+        
+            /* HTTP headers */
+            header('Content-Type: application/pdf');
+            header('Content-Length: ' . strlen($pdf));
+            header('Content-Disposition: attachment; filename="quitus.pdf"');
+            print $pdf;
+
+            setlocale(LC_TIME, $oldLocale);
+
+            @mail("laurent.birba@univ-antilles.fr","Quitus", "pour l'utilisateur ".$userfields->cas_name." le ".date("l j F Y, H:i"));        
+          break;
+        default:
+          return ("Unexpected HTTP code: ". $http_code. "\n");
+      }
+    }
 
     curl_close($ch);
-
-    /* HTTP headers */
-    header('Content-Type: application/pdf');
-    header('Content-Length: ' . strlen($pdf));
-    header('Content-Disposition: attachment; filename="quitus.pdf"');
-    print $pdf;
-
-    setlocale(LC_TIME, $oldLocale);
-
+    @mail("laurent.birba@univ-antilles.fr","execution quitus","infos curl ".$http_code);
     return NULL;
+    //drupal_goto('http://bu.univ-antilles.fr/service/quitus');
   }
+  @mail("laurent.birba@univ-antilles.fr","probleme recuperation infos user","user ".$userfields->cas_name);
+  drupal_goto('http://bu.univ-antilles.fr/service/quitus');
 }
 
 /* Check if the user have enough permissions to get a quitus, with feedback */
@@ -179,7 +237,7 @@ function scdalma_quitus() {
       
   //on récupère les infos de l'user dans alma
   $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
-  $xmluser=simplexml_load_file($info_user);
+  @$xmluser=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xmluser){
@@ -187,7 +245,7 @@ function scdalma_quitus() {
     //on récupère les prets
     $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
     
-    $xmlloans = simplexml_load_file($loans);
+    @$xmlloans = simplexml_load_file($loans);
     
     //si pas d'erreur dans le xml
     if($xmlloans){
@@ -258,7 +316,7 @@ function scdalma_quitus() {
   else
   {
     $out = $out.$outb;
-    $out .= "<p>Nous ne pouvons pas cloturer votre compte en l'état. Merci de prendre contact avec votre bibliothèque :</p>";
+    $out .= "<hr /><p><span class=\"glyphicon glyphicon-envelope\" aria-hidden=\"true\"></span> Nous ne pouvons pas cloturer votre compte en l'état. Merci de prendre contact avec votre bibliothèque :</p>";
     $render_contact_form = drupal_get_form('scdalma_contact_form');
     $out .= drupal_render($render_contact_form);
   }
@@ -268,6 +326,28 @@ function scdalma_quitus() {
 
 /* A basic contact form */
 function scdalma_contact_form($form_state) {
+  global $user;
+  $user_fields = user_load($user->uid);
+  $form['nom'] = array(
+    '#type' => 'hidden',
+    '#value' => $user_fields->field_nom['und'][0]['value'],
+  );
+  
+  $form['prenom'] = array(
+    '#type' => 'hidden',
+    '#value' => $user_fields->field_prenom['und'][0]['value'],
+  );
+  
+  $form['login'] = array(
+    '#type' => 'hidden',
+    '#value' => $user->name,
+  );
+  
+  $form['mail'] = array(
+    '#type' => 'hidden',
+    '#value' => $user->mail,
+  );
+
   $form['message'] = array(
     '#type' => 'textarea',
     '#title' => t('Message'),
@@ -283,8 +363,12 @@ function scdalma_contact_form($form_state) {
 }
 
 function scdalma_contact_form_submit($form, &$form_state) {
+  $nom = $form_state['values']['nom'];
+  $prenom = $form_state['values']['prenom'];
+  $mail = $form_state['values']['mail'];
+  $login = $form_state['values']['login'];
   $message = $form_state['values']['message'];
-  if (simple_mail_send('no-reply@angole.univ-ag.fr', 'quitus@univ-ag.fr', 'Problème d\'obtention de quitus', $message)) {
+  if (simple_mail_send('no-reply@angole.univ-ag.fr', 'quitus@univ-ag.fr', 'Problème d\'obtention de quitus', 'De la part de '.$prenom.' '.$nom.'<br/>'.$mail.'<br /> login ldap : '.$login.'<br />'.$message)) {
     drupal_set_message("Message envoyé.", 'status');
   } else {
     drupal_set_message("Problème lors de l'envoi du message.", 'status');
@@ -306,14 +390,14 @@ function scdalma_currentdocs() {
 
   //on récupère les infos de l'user dans alma
   $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
-  $xml=simplexml_load_file($info_user);
+  @$xml=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xml){
 
     $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
         
-    $xml=simplexml_load_file($loans);
+    @$xml=simplexml_load_file($loans);
     
     //si pas d'erreur dans le xml
     if($xml){
