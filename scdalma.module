@@ -42,9 +42,6 @@ function scdalma_quitus_access() {
   $userfields = user_load($user->uid);
 
   $candeliver = true;
-  global $user;
-  $userfields = user_load($user->uid);
-
       
   //on récupère les infos de l'user dans alma
   $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
@@ -105,8 +102,8 @@ function scdalma_quitus_download() {
   $prenom = $userfields->field_prenom['und'][0]['value'];
   $nom = $userfields->field_nom['und'][0]['value'];
 
-  if (!array_key_exists('und', $userfields->field_horizon_uid))
-    return false;
+  //if (!array_key_exists('und', $userfields->field_horizon_uid))
+    //return false;
 
   //$bn = $userfields->field_horizon_uid['und'][0]['value'];
   
