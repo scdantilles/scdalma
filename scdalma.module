@@ -1,8 +1,8 @@
 <?php
 
-/* api users :  */
+/* api users :   */
 /* https://api-eu.hosted.exlibrisgroup.com */
-/* exemple : https://gateway-hostname/almaws/version/resource-name/parameters?additional_parameter=value&apikey= */
+/* exemple : https://gateway-hostname/almaws/version/resource-name/parameters?additional_parameter=value&apikey=  */
 
 function scdalma_help($path, $arg) {
   switch ($path) {
@@ -44,14 +44,14 @@ function scdalma_quitus_access() {
   $candeliver = true;
       
   //on récupère les infos de l'user dans alma
-  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."?apikey= ";
   @$xmluser=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xmluser){
 
     //on récupère les prets
-    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."/loans?apikey= ";
     
     @$xmlloans = simplexml_load_file($loans);
     
@@ -102,13 +102,13 @@ function scdalma_quitus_download() {
   $prenom = $userfields->field_prenom['und'][0]['value'];
   $nom = $userfields->field_nom['und'][0]['value'];
 
-  //if (!array_key_exists('und', $userfields->field_horizon_uid))
-    //return false;
+/*   if (!array_key_exists('und', $userfields->field_horizon_uid))
+    return false; */
 
   //$bn = $userfields->field_horizon_uid['und'][0]['value'];
   
     //on récupère les infos de l'user dans alma
-  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."?apikey= ";
   @$xmluser=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
@@ -118,6 +118,11 @@ function scdalma_quitus_download() {
       if($identifier->id_type['desc'] == 'INE'){
           $INE = $identifier->value;
       }  
+    }
+    
+    foreach($xmluser->contact_info->emails->email as $email) {
+      if($email["preferred"] == "true")
+        $mailto = $email->email_address;
     }
 
     $oldLocale = setlocale(LC_TIME, '0');
@@ -147,16 +152,16 @@ function scdalma_quitus_download() {
       <br>
       <p>Le Directeur du Service commun de la documentation de l’Université des Antilles certifie que <br />".$prenom." ".$nom."<br />INE : ".$INE."<br /> est quitte de toute obligation envers les bibliothèques universitaires de l’Université des Antilles et que le dernier ouvrage emprunté a été rendu.</p>
       <p>Pointe-à-Pitre, le ".strftime("%e %B %Y" ,time())."</p>
-      <p>Sylvain HOUDEBERT,<br>Directeur du SCDU Antilles</p>
       <br>
       <br>
     ");
 
-    $tcpdf->Image(dirname(__FILE__).'/images/sign.jpg', null, null, 50, null, 'JPG', '', 'T', false, 150, 'R', false, false, 0, false, false, false);
+    $tcpdf->Image(dirname(__FILE__).'/images/signature-cachet.jpg', null, null, 75, null, 'JPG', '', 'T', false, 150, 'R', false, false, 0, false, false, false);
 
     $pdf = $tcpdf->Output('', 'S');
 
     if (!$pdf) {
+      @mail("laurent.birba@univ-antilles.fr","probleme pdf","user ".$userfields->field_ldap_uid['und'][0]['value']);
       return t('An error occured.');
     }
 
@@ -167,7 +172,35 @@ function scdalma_quitus_download() {
     //on change la date d'expiration
     $xmluser->expiry_date=date('Y-m-d')."Z";
     
-    $url = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?user_id_type=all_unique&send_pin_number_letter=false&apikey=";
+    //on rajoute un blocage
+    $user_blocks_tab = $xmluser->xpath('//user_blocks');
+    
+    $user_blocks = $user_blocks_tab[0];
+    
+    $user_block = $user_blocks->addChild('user_block');
+    $user_block->addAttribute('segment_type', 'Internal');
+    
+    $block_type = $user_block->addChild('block_type', 'GENERAL');
+    $block_type->addAttribute('desc', 'General');
+    
+    $block_description = $user_block->addChild('block_description', '53-GLOBAL');
+    $block_description->addAttribute('desc', 'Quitus');
+    
+    $block_status = $user_block->addChild('block_status', 'ACTIVE');
+    
+    $block_note = $user_block->addChild('block_note', 'Quitus délivré');
+    
+    $created_by = $user_block->addChild('created_by', 'API Alma');
+
+    $datedujour = date('c').'Z';
+
+    $created_date = $user_block->addChild('created_date', $datedujour);
+
+    $findannee = '2021-08-31T15:26:54.284Z';
+
+    $expiry_date = $user_block->addChild('expiry_date', $findannee);      
+    
+    $url = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."?user_id_type=all_unique&send_pin_number_letter=false&apikey= ";
 
     $data = $xmluser->asXML();
 
@@ -201,20 +234,38 @@ function scdalma_quitus_download() {
 
             setlocale(LC_TIME, $oldLocale);
 
-            @mail("laurent.birba@univ-antilles.fr","Quitus", "pour l'utilisateur ".$userfields->cas_name." le ".date("l j F Y, H:i"));        
+            @mail("laurent.birba@univ-antilles.fr","Quitus", "pour l'utilisateur ".$userfields->field_ldap_uid['und'][0]['value']." le ".date("l j F Y, H:i"));        
           break;
         default:
+          @mail("laurent.birba@univ-antilles.fr","execution quitus","infos curl ".$http_code);
           return ("Unexpected HTTP code: ". $http_code. "\n");
       }
     }
 
     curl_close($ch);
-    @mail("laurent.birba@univ-antilles.fr","execution quitus","infos curl ".$http_code);
+
+    
+    
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+    $to = 'laurent.birba@univ-antilles.fr,bule@univ-antilles.fr';
+    $from = 'bu@univ-antilles.fr'; 
+    $subject = "Quitus";
+    $body = $mailto . '<p>Bonjour<br />Suite à votre demande et après vérification de nos fichiers informatiques, nous avons  le plaisir de vous adresser en PJ votre quitus de Bibliothèque.<br />Bonne réception,</p><p><img src=\"https://bu.univ-antilles.fr/sites/buantilles.aegirprod.martinique.univ-antilles.fr/themes/angole/images/logobu.png\" alt=\"logo Université des Antilles BU\"/><br />BULE Services aux publics<br />Bibliothèques de l\'Université des Antilles</p>';
+    $attachment = array(
+    'filecontent' => $pdf,
+    'filename' => 'quitus.pdf',
+    'filemime' => 'application/pdf',  
+    );
+    $message = drupal_mail('scd_custom', 'message_key', $to, "fr", array('body' => $body, 'subject' => $subject, 'attachment' => $attachment), $from, TRUE); 
+  
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////  
+    
     return NULL;
     //drupal_goto('http://bu.univ-antilles.fr/service/quitus');
   }
-  @mail("laurent.birba@univ-antilles.fr","probleme recuperation infos user","user ".$userfields->cas_name);
-  drupal_goto('http://bu.univ-antilles.fr/service/quitus');
+  @mail("laurent.birba@univ-antilles.fr","probleme recuperation infos user","user ".$userfields->field_ldap_uid['und'][0]['value']);
+  drupal_goto('https://bu.univ-antilles.fr/service/quitus');
 }
 
 /* Check if the user have enough permissions to get a quitus, with feedback */
@@ -228,19 +279,19 @@ function scdalma_quitus() {
 
   /* Check if the user is logged in */
   if (!user_is_logged_in()) {
-    $url = urlencode("http://" . $_SERVER['SERVER_NAME'] . "/cas?destination=quitus");
+    $url = urlencode("https://" . $_SERVER['SERVER_NAME'] . "/cas?destination=quitus");
     drupal_goto('https://auth.martinique.univ-ag.fr/cas/login?service=' . $url);
   }
       
   //on récupère les infos de l'user dans alma
-  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."?apikey= ";
   @$xmluser=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xmluser){
 
     //on récupère les prets
-    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."/loans?apikey= ";
     
     @$xmlloans = simplexml_load_file($loans);
     
@@ -381,18 +432,18 @@ function scdalma_currentdocs() {
 
   if (!user_is_logged_in())
   {
-    $url = urlencode("http://" . $_SERVER['SERVER_NAME'] . "/cas?destination=currentdocs");
+    $url = urlencode("https://" . $_SERVER['SERVER_NAME'] . "/cas?destination=currentdocs");
     drupal_goto('https://auth.martinique.univ-ag.fr/cas/login?service=' . $url);
   }
 
   //on récupère les infos de l'user dans alma
-  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."?apikey=";
+  $info_user = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."?apikey= ";
   @$xml=simplexml_load_file($info_user);
   
   //si pas d'erreur dans le xml / utilisateur trouvé
   if($xml){
 
-    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->cas_name."/loans?apikey=";
+    $loans = "https://api-eu.hosted.exlibrisgroup.com/almaws/v1/users/".$userfields->field_ldap_uid['und'][0]['value']."/loans?apikey= ";
         
     @$xml=simplexml_load_file($loans);
     
@@ -431,5 +482,18 @@ function scdalma_currentdocs() {
   }
     else return "<p>Votre inscription à la BU n'a pas été trouvée.</p>"; 
 }
+
+function scd_custom_mail($key, &$message, $params) {
+  if (isset($params['subject'])) {
+    $message['subject'] = $params['subject'];
+  }
+  if (isset($params['body'])) {
+    $message['body'][] = $params['body'];
+  }
+  if (isset($params['attachment'])) {
+    $message['params']['attachments'][] = $params['attachment'];
+  }
+}
+
 
 ?>
