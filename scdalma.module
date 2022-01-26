@@ -234,10 +234,10 @@ function scdalma_quitus_download() {
 
             setlocale(LC_TIME, $oldLocale);
 
-            @mail("laurent.birba@univ-antilles.fr","Quitus", "pour l'utilisateur ".$userfields->field_ldap_uid['und'][0]['value']." le ".date("l j F Y, H:i"));        
+            @mail("mail@mail.fr","Quitus", "pour l'utilisateur ".$userfields->field_ldap_uid['und'][0]['value']." le ".date("l j F Y, H:i"));        
           break;
         default:
-          @mail("laurent.birba@univ-antilles.fr","execution quitus","infos curl ".$http_code);
+          @mail("mail@mail.fr","execution quitus","infos curl ".$http_code);
           return ("Unexpected HTTP code: ". $http_code. "\n");
       }
     }
@@ -248,8 +248,8 @@ function scdalma_quitus_download() {
     
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-    $to = 'laurent.birba@univ-antilles.fr,bule@univ-antilles.fr';
-    $from = 'bu@univ-antilles.fr'; 
+    $to = 'mail@mail.fr';
+    $from = 'mail@mail.fr'; 
     $subject = "Quitus";
     $body = $mailto . '<p>Bonjour<br />Suite à votre demande et après vérification de nos fichiers informatiques, nous avons  le plaisir de vous adresser en PJ votre quitus de Bibliothèque.<br />Bonne réception,</p><p><img src=\"https://bu.univ-antilles.fr/sites/buantilles.aegirprod.martinique.univ-antilles.fr/themes/angole/images/logobu.png\" alt=\"logo Université des Antilles BU\"/><br />BULE Services aux publics<br />Bibliothèques de l\'Université des Antilles</p>';
     $attachment = array(
@@ -264,7 +264,7 @@ function scdalma_quitus_download() {
     return NULL;
     //drupal_goto('http://bu.univ-antilles.fr/service/quitus');
   }
-  @mail("laurent.birba@univ-antilles.fr","probleme recuperation infos user","user ".$userfields->field_ldap_uid['und'][0]['value']);
+  @mail("mail@mail.fr","probleme recuperation infos user","user ".$userfields->field_ldap_uid['und'][0]['value']);
   drupal_goto('https://bu.univ-antilles.fr/service/quitus');
 }
 
